@@ -94,3 +94,17 @@ Quick-login buttons on the login page also work via `POST /api/auth/quick-login`
 | GET | `/api/analytics/dashboard` | Dashboard stats |
 
 All protected routes require `Authorization: Bearer <token>`.
+
+## Push to GitHub
+
+The repo root is the `crm-erp` folder (frontend + `backend/` in one project).
+
+```bash
+cd "/Users/mouaad/Downloads/artifacts 2/crm-erp"
+
+# 1. Create a new empty repo on GitHub (e.g. crm-erp), then:
+git remote add origin https://github.com/YOUR_USERNAME/crm-erp.git
+git push -u origin main
+```
+
+CI runs automatically via `.github/workflows/ci.yml` on push/PR to `main`.
