@@ -2,6 +2,8 @@
 
 Full-stack CRM for lead management: React + Vite frontend, Express + Neon PostgreSQL backend.
 
+📖 **[Full documentation (A → Z)](./DOCUMENTATION.md)** — architecture, API, database, roles, setup, troubleshooting.
+
 ## Stack
 
 | Layer | Tech |
