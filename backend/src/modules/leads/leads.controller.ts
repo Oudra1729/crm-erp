@@ -1,10 +1,11 @@
 import type { Request, Response, NextFunction } from "express";
 import { paramId } from "../../shared/params.js";
 import { leadsService } from "./leads.service.js";
+import type { ListLeadsQuery } from "./leads.schema.js";
 
 export async function list(req: Request, res: Response, next: NextFunction) {
   try {
-    const data = await leadsService.list(req.user!);
+    const data = await leadsService.list(req.user!, req.query as unknown as ListLeadsQuery);
     res.json({ success: true, data });
   } catch (e) {
     next(e);

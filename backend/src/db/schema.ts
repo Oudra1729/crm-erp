@@ -35,6 +35,7 @@ export const notificationTypeEnum = pgEnum("notification_type", [
   "campaign",
 ]);
 export const taskPriorityEnum = pgEnum("task_priority", ["high", "medium", "low"]);
+export const importStatusEnum = pgEnum("import_status", ["Succès", "Partiel", "Échec"]);
 
 export const users = pgTable("users", {
   id: uuid("id").primaryKey().defaultRandom(),
@@ -106,6 +107,20 @@ export const notifications = pgTable("notifications", {
   createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
 });
 
+export const importJobs = pgTable("import_jobs", {
+  id: uuid("id").primaryKey().defaultRandom(),
+  userId: uuid("user_id")
+    .notNull()
+    .references(() => users.id, { onDelete: "restrict" }),
+  filename: varchar("filename", { length: 255 }).notNull(),
+  totalRows: integer("total_rows").notNull().default(0),
+  imported: integer("imported").notNull().default(0),
+  errors: integer("errors").notNull().default(0),
+  warnings: integer("warnings").notNull().default(0),
+  status: importStatusEnum("status").notNull().default("Succès"),
+  createdAt: timestamp("created_at", { withTimezone: true }).notNull().defaultNow(),
+});
+
 export const tasks = pgTable("tasks", {
   id: uuid("id").primaryKey().defaultRandom(),
   userId: uuid("user_id")
@@ -124,6 +139,7 @@ export const usersRelations = relations(users, ({ many }) => ({
   notes: many(leadNotes),
   notifications: many(notifications),
   tasks: many(tasks),
+  importJobs: many(importJobs),
 }));
 
 export const campaignsRelations = relations(campaigns, ({ many }) => ({
@@ -153,3 +169,4 @@ export type Lead = typeof leads.$inferSelect;
 export type LeadNote = typeof leadNotes.$inferSelect;
 export type Notification = typeof notifications.$inferSelect;
 export type Task = typeof tasks.$inferSelect;
+export type ImportJob = typeof importJobs.$inferSelect;

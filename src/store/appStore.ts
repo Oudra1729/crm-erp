@@ -46,7 +46,7 @@ export function AppProvider({ children }: { children: ReactNode }) {
   const [sidebarCollapsed, setSidebarCollapsed] = useState(false);
 
   useEffect(() => {
-    if (leadsQuery.data) setLeads(leadsQuery.data);
+    if (leadsQuery.data) setLeads(leadsQuery.data.items);
   }, [leadsQuery.data]);
 
   useEffect(() => {

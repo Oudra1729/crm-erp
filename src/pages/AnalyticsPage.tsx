@@ -9,19 +9,33 @@ import {
   LineChart, Line, BarChart, Bar, PieChart, Pie, Cell,
   XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContainer, Legend
 } from 'recharts';
-import { LEADS_EVOLUTION, CONVERSION_FUNNEL, AGENT_PERFORMANCE, DAILY_ACTIVITY, LEADS_BY_SOURCE } from '@/data/analytics';
-import { useAppStore } from '@/store/appStore';
+import { useAnalytics } from '@/hooks/useAppData';
 
 const DATE_RANGES = ['7 jours', '30 jours', '3 mois', '6 mois'] as const;
+const DAYS_MAP: Record<string, number> = { '7 jours': 7, '30 jours': 30, '3 mois': 90, '6 mois': 180 };
 
 export function AnalyticsPage() {
   const [dateRange, setDateRange] = useState<string>('30 jours');
-  const { leads, agents } = useAppStore();
+  const days = DAYS_MAP[dateRange] ?? 30;
+  const { data: analytics, isLoading } = useAnalytics(days);
 
-  const converted = leads.filter(l => l.status === 'Converted').length;
-  const convRate = leads.length > 0 ? ((converted / leads.length) * 100).toFixed(1) : '0';
-  const totalCalls = agents.reduce((s, a) => s + a.stats.todaysCalls, 0);
-  const avgConv = (agents.reduce((s, a) => s + a.stats.conversionRate, 0) / agents.length).toFixed(1);
+  const converted = analytics?.summary.converted ?? 0;
+  const convRate = analytics?.summary.conversionRate?.toFixed(1) ?? '0';
+  const totalCalls = analytics?.summary.totalCalls ?? 0;
+  const avgConv = analytics?.summary.avgAgentConversionRate?.toFixed(1) ?? '0';
+  const LEADS_EVOLUTION = analytics?.leadsEvolution ?? [];
+  const CONVERSION_FUNNEL = analytics?.conversionFunnel ?? [];
+  const AGENT_PERFORMANCE = analytics?.agentPerformance ?? [];
+  const DAILY_ACTIVITY = analytics?.dailyActivity ?? [];
+  const LEADS_BY_SOURCE = analytics?.leadsBySource ?? [];
+
+  if (isLoading) {
+    return (
+      <PageTransition>
+        <div className="flex items-center justify-center min-h-[40vh] text-muted-foreground">Chargement des analytiques...</div>
+      </PageTransition>
+    );
+  }
 
   return (
     <PageTransition>

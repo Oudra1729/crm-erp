@@ -56,3 +56,18 @@ export const api = {
     request<T>(path, { method: "PATCH", body: JSON.stringify(data ?? {}) }),
   delete: <T>(path: string) => request<T>(path, { method: "DELETE" }),
 };
+
+export async function downloadFile(path: string, filename: string) {
+  const token = getToken();
+  const res = await fetch(`${API_BASE}${path}`, {
+    headers: token ? { Authorization: `Bearer ${token}` } : {},
+  });
+  if (!res.ok) throw new ApiError("Download failed", res.status);
+  const blob = await res.blob();
+  const url = URL.createObjectURL(blob);
+  const a = document.createElement("a");
+  a.href = url;
+  a.download = filename;
+  a.click();
+  URL.revokeObjectURL(url);
+}

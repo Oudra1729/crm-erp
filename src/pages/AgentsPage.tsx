@@ -10,6 +10,10 @@ import { Select, SelectContent, SelectItem, SelectTrigger, SelectValue } from '@
 import { DropdownMenu, DropdownMenuContent, DropdownMenuItem, DropdownMenuSeparator, DropdownMenuTrigger } from '@/components/ui/dropdown-menu';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
+import { useAuth } from '@/hooks/useAuth';
+import { useCreateUser, useUpdateUser, useDeleteUser } from '@/hooks/useAppData';
+import { UserFormDialog } from '@/components/admin/UserFormDialog';
+import type { UserDto } from '@/lib/api-types';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
 import { LineChart, Line, XAxis, YAxis, Tooltip, ResponsiveContainer, CartesianGrid } from 'recharts';
@@ -21,7 +25,19 @@ const ROLE_COLORS = {
   Agent: 'bg-gray-100 text-gray-600 dark:bg-gray-800 dark:text-gray-400',
 };
 
-function AgentCard({ agent, index }: { agent: Agent; index: number }) {
+function AgentCard({
+  agent,
+  index,
+  isAdmin,
+  onEdit,
+  onDelete,
+}: {
+  agent: Agent;
+  index: number;
+  isAdmin: boolean;
+  onEdit: () => void;
+  onDelete: () => void;
+}) {
   return (
     <motion.div
       initial={{ opacity: 0, y: 16 }}
@@ -51,10 +67,13 @@ function AgentCard({ agent, index }: { agent: Agent; index: number }) {
           </DropdownMenuTrigger>
           <DropdownMenuContent align="end">
             <DropdownMenuItem onClick={() => toast.info('Profil agent')}>Voir profil</DropdownMenuItem>
-            <DropdownMenuItem onClick={() => toast.info('Modifier agent')}>Modifier</DropdownMenuItem>
-            <DropdownMenuSeparator />
-            <DropdownMenuItem className="text-amber-500" onClick={() => toast.warning('Agent suspendu')}>Suspendre</DropdownMenuItem>
-            <DropdownMenuItem className="text-red-500" onClick={() => toast.error('Agent supprimé')}>Supprimer</DropdownMenuItem>
+            {isAdmin && (
+              <>
+                <DropdownMenuItem onClick={onEdit}>Modifier</DropdownMenuItem>
+                <DropdownMenuSeparator />
+                <DropdownMenuItem className="text-red-500" onClick={onDelete}>Supprimer</DropdownMenuItem>
+              </>
+            )}
           </DropdownMenuContent>
         </DropdownMenu>
       </div>
@@ -97,9 +116,16 @@ const PERF_DATA = Array.from({ length: 14 }, (_, i) => ({
 
 export function AgentsPage() {
   const { agents } = useAppStore();
+  const { user: currentUser } = useAuth();
+  const createUser = useCreateUser();
+  const updateUser = useUpdateUser();
+  const deleteUser = useDeleteUser();
   const [search, setSearch] = useState('');
   const [roleFilter, setRoleFilter] = useState('all');
   const [statusFilter, setStatusFilter] = useState('all');
+  const [userDialogOpen, setUserDialogOpen] = useState(false);
+  const [editingUser, setEditingUser] = useState<UserDto | null>(null);
+  const isAdmin = currentUser?.role === 'Admin';
 
   const filtered = agents.filter(a => {
     const matchSearch = a.fullName.toLowerCase().includes(search.toLowerCase()) ||
@@ -122,9 +148,16 @@ export function AgentsPage() {
               <span className="text-emerald-500 font-medium">{onlineCount}</span> en ligne · {agents.length} total
             </p>
           </div>
-          <Button className="gap-2" size="sm" onClick={() => toast.info('Formulaire ajout agent')} data-testid="button-add-agent">
-            <Plus className="h-4 w-4" /> Ajouter
-          </Button>
+          {isAdmin && (
+            <Button
+              className="gap-2"
+              size="sm"
+              onClick={() => { setEditingUser(null); setUserDialogOpen(true); }}
+              data-testid="button-add-agent"
+            >
+              <Plus className="h-4 w-4" /> Ajouter
+            </Button>
+          )}
         </div>
 
         {/* Filters */}
@@ -171,7 +204,34 @@ export function AgentsPage() {
         <div className="grid grid-cols-1 sm:grid-cols-2 xl:grid-cols-3 2xl:grid-cols-4 gap-4">
           <AnimatePresence>
             {filtered.map((agent, idx) => (
-              <AgentCard key={agent.id} agent={agent} index={idx} />
+              <AgentCard
+                key={agent.id}
+                agent={agent}
+                index={idx}
+                isAdmin={isAdmin}
+                onEdit={() => {
+                  setEditingUser({
+                    id: agent.id,
+                    email: agent.email,
+                    firstName: agent.firstName,
+                    lastName: agent.lastName,
+                    fullName: agent.fullName,
+                    role: agent.role,
+                    phone: agent.phone,
+                    isOnline: agent.isOnline,
+                    avatarInitials: `${agent.firstName.charAt(0)}${agent.lastName.charAt(0)}`,
+                    createdAt: '',
+                    updatedAt: '',
+                  });
+                  setUserDialogOpen(true);
+                }}
+                onDelete={() => {
+                  deleteUser.mutate(agent.id, {
+                    onSuccess: () => toast.success('Utilisateur supprimé'),
+                    onError: (e) => toast.error(e instanceof Error ? e.message : 'Erreur'),
+                  });
+                }}
+              />
             ))}
           </AnimatePresence>
           {filtered.length === 0 && (
@@ -252,6 +312,30 @@ export function AgentsPage() {
           </div>
         </div>
       </div>
+      {isAdmin && (
+        <UserFormDialog
+          open={userDialogOpen}
+          onOpenChange={setUserDialogOpen}
+          user={editingUser}
+          onSubmit={async (data) => {
+            if (editingUser) {
+              await updateUser.mutateAsync({ id: editingUser.id, ...data });
+              toast.success('Utilisateur mis à jour');
+            } else {
+              if (!data.password) throw new Error('Mot de passe requis');
+              await createUser.mutateAsync({
+                email: data.email,
+                password: data.password,
+                firstName: data.firstName,
+                lastName: data.lastName,
+                role: data.role,
+                phone: data.phone,
+              });
+              toast.success('Utilisateur créé');
+            }
+          }}
+        />
+      )}
     </PageTransition>
   );
 }

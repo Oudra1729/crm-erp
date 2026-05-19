@@ -27,6 +27,22 @@ export const createNoteSchema = z.object({
   content: z.string().min(1).max(5000),
 });
 
+export const listLeadsQuerySchema = z.object({
+  search: z.string().trim().optional(),
+  status: leadStatus.optional(),
+  campaignId: z.string().uuid().optional(),
+  priority: leadPriority.optional(),
+  assignedAgentId: z.string().uuid().optional(),
+  page: z.coerce.number().int().min(1).default(1),
+  limit: z.coerce.number().int().min(1).max(100).default(20),
+  sortBy: z
+    .enum(["fullName", "city", "status", "priority", "lastContact", "campaignName"])
+    .default("lastContact"),
+  sortDir: z.enum(["asc", "desc"]).default("desc"),
+});
+
+export type ListLeadsQuery = z.infer<typeof listLeadsQuerySchema>;
+
 export const createLeadSchema = z.object({
   firstName: z.string().min(1),
   lastName: z.string().min(1),

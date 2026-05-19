@@ -6,6 +6,7 @@ import {
   bulkAssignSchema,
   createNoteSchema,
   createLeadSchema,
+  listLeadsQuerySchema,
 } from "./leads.schema.js";
 import * as ctrl from "./leads.controller.js";
 
@@ -13,7 +14,7 @@ export const leadsRouter = Router();
 
 leadsRouter.use(authenticate);
 
-leadsRouter.get("/", ctrl.list);
+leadsRouter.get("/", validate(listLeadsQuerySchema, "query"), ctrl.list);
 leadsRouter.post("/bulk-assign", requireRoles("Admin", "Supervisor"), validate(bulkAssignSchema), ctrl.bulkAssign);
 leadsRouter.post("/", requireRoles("Admin", "Supervisor"), validate(createLeadSchema), ctrl.create);
 leadsRouter.get("/:id", ctrl.getById);

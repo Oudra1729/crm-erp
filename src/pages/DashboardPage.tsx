@@ -1,7 +1,7 @@
 import { PageTransition } from '@/components/shared/PageTransition';
 import { StatCard } from '@/components/shared/StatCard';
 import { useAppStore } from '@/store/appStore';
-import { LEADS_EVOLUTION, CONVERSION_FUNNEL, AGENT_PERFORMANCE, CAMPAIGN_PERFORMANCE, RECENT_ACTIVITY } from '@/data/analytics';
+import { useAnalytics } from '@/hooks/useAppData';
 import {
   Users, UserCheck, Megaphone, TrendingUp, Phone, CheckCircle2,
   Upload, Plus, UserPlus, GitBranch, Clock, FileText, ArrowRight, Activity
@@ -34,13 +34,22 @@ const ACTIVITY_COLORS: Record<string, string> = {
 
 export function DashboardPage() {
   const { leads, agents, campaigns } = useAppStore();
+  const { data: analytics } = useAnalytics(30);
 
-  const totalLeads = leads.length;
-  const activeAgents = agents.filter(a => a.isOnline).length;
-  const activeCampaigns = campaigns.filter(c => c.status === 'Active').length;
-  const converted = leads.filter(l => l.status === 'Converted').length;
-  const convRate = totalLeads > 0 ? ((converted / totalLeads) * 100).toFixed(1) : '0';
-  const todayCalls = agents.reduce((s, a) => s + a.stats.todaysCalls, 0);
+  const totalLeads = analytics?.summary.totalLeads ?? leads.length;
+  const activeAgents = analytics?.summary.activeAgents ?? agents.filter(a => a.isOnline).length;
+  const activeCampaigns = analytics?.summary.activeCampaigns ?? campaigns.filter(c => c.status === 'Active').length;
+  const converted = analytics?.summary.converted ?? leads.filter(l => l.status === 'Converted').length;
+  const convRate = (analytics?.summary.conversionRate ?? (totalLeads > 0 ? (converted / totalLeads) * 100 : 0)).toFixed(1);
+  const todayCalls = analytics?.summary.totalCalls ?? agents.reduce((s, a) => s + a.stats.todaysCalls, 0);
+  const LEADS_EVOLUTION = analytics?.leadsEvolution?.map(d => ({ date: d.date, Nouveaux: d.Nouveaux, Convertis: d.Convertis })) ?? [];
+  const CONVERSION_FUNNEL = analytics?.conversionFunnel ?? [];
+  const AGENT_PERFORMANCE = analytics?.agentPerformance ?? [];
+  const CAMPAIGN_PERFORMANCE = analytics?.campaignPerformance ?? [];
+  const RECENT_ACTIVITY = [
+    { id: 1, action: 'Leads en base', subject: `${totalLeads} leads`, time: 'live', type: 'import' as const },
+    { id: 2, action: 'Convertis', subject: `${converted} leads`, time: 'live', type: 'status' as const },
+  ];
 
   const quickActions = [
     { label: 'Importer CSV', icon: Upload, href: '/import', color: 'text-blue-500' },

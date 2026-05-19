@@ -6,6 +6,8 @@ import { campaignsRouter } from "../modules/campaigns/campaigns.routes.js";
 import { notificationsRouter } from "../modules/notifications/notifications.routes.js";
 import { tasksRouter } from "../modules/tasks/tasks.routes.js";
 import { analyticsRouter } from "../modules/analytics/analytics.routes.js";
+import { importsRouter } from "../modules/imports/imports.routes.js";
+import { usersRouter } from "../modules/users/users.routes.js";
 
 export const apiRouter = Router();
 
@@ -20,3 +22,5 @@ apiRouter.use("/campaigns", campaignsRouter);
 apiRouter.use("/notifications", notificationsRouter);
 apiRouter.use("/tasks", tasksRouter);
 apiRouter.use("/analytics", analyticsRouter);
+apiRouter.use("/imports", importsRouter);
+apiRouter.use("/users", usersRouter);

@@ -22,7 +22,7 @@ export const ROLE_HOME: Record<UserRole, string> = {
 export const ROLE_ROUTES: Record<UserRole, string[]> = {
   Admin: ["*"],
   Supervisor: ["/dashboard", "/leads", "/campaigns", "/agents", "/analytics", "/notifications"],
-  Agent: ["/workspace", "/tasks", "/notifications"],
+  Agent: ["/workspace", "/leads", "/tasks", "/notifications"],
 };
 
 export function canAccess(role: UserRole, path: string): boolean {

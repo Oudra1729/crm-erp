@@ -6,9 +6,25 @@ import { Button } from '@/components/ui/button';
 import { Progress } from '@/components/ui/progress';
 import { cn } from '@/lib/utils';
 import { toast } from 'sonner';
-import { IMPORT_HISTORY } from '@/data/analytics';
 import { format } from 'date-fns';
 import { fr } from 'date-fns/locale';
+import { parseCsv } from '@/lib/csv';
+import { downloadFile } from '@/lib/api';
+import {
+  useCampaigns,
+  useImportHistory,
+  useImportPreview,
+  useExecuteImport,
+} from '@/hooks/useAppData';
+import type { ImportPreviewDto } from '@/lib/api-types';
+import {
+  Select,
+  SelectContent,
+  SelectItem,
+  SelectTrigger,
+  SelectValue,
+} from '@/components/ui/select';
+import { Label } from '@/components/ui/label';
 
 type Step = 'upload' | 'mapping' | 'validate' | 'progress' | 'success';
 
@@ -37,52 +53,94 @@ const STATUS_COLORS = {
 };
 
 export function ImportPage() {
+  const { data: campaigns = [] } = useCampaigns();
+  const { data: history = [] } = useImportHistory();
+  const previewMutation = useImportPreview();
+  const executeMutation = useExecuteImport();
+
   const [step, setStep] = useState<Step>('upload');
   const [isDragging, setIsDragging] = useState(false);
   const [fileName, setFileName] = useState('');
-  const [mappings, setMappings] = useState<Record<string, string>>({});
+  const [parsedRows, setParsedRows] = useState<Record<string, string>[]>([]);
+  const [preview, setPreview] = useState<ImportPreviewDto | null>(null);
+  const [campaignId, setCampaignId] = useState('');
+  const [importResult, setImportResult] = useState<{ imported: number; errors: number; warnings: number; skipped: number } | null>(null);
   const [progressVal, setProgressVal] = useState(0);
+
+  const loadFile = async (file: File) => {
+    if (!file.name.endsWith('.csv')) {
+      toast.error('Veuillez importer un fichier .csv');
+      return;
+    }
+    const text = await file.text();
+    const rows = parseCsv(text);
+    if (rows.length === 0) {
+      toast.error('Fichier CSV vide ou invalide');
+      return;
+    }
+    setFileName(file.name);
+    setParsedRows(rows);
+    setPreview(null);
+    toast.success(`Fichier "${file.name}" chargé (${rows.length} lignes)`);
+    setStep('mapping');
+  };
 
   const handleDrop = useCallback((e: React.DragEvent) => {
     e.preventDefault();
     setIsDragging(false);
     const file = e.dataTransfer.files[0];
-    if (file && file.name.endsWith('.csv')) {
-      setFileName(file.name);
-      toast.success(`Fichier "${file.name}" chargé`);
-      setStep('mapping');
-    } else {
-      toast.error('Veuillez importer un fichier .csv');
-    }
+    if (file) void loadFile(file);
   }, []);
 
   const handleFileInput = (e: React.ChangeEvent<HTMLInputElement>) => {
     const file = e.target.files?.[0];
-    if (file) {
-      setFileName(file.name);
-      toast.success(`Fichier "${file.name}" chargé`);
-      setStep('mapping');
-    }
+    if (file) void loadFile(file);
   };
 
-  const handleValidate = () => {
-    setStep('validate');
+  const handleValidate = async () => {
+    try {
+      const result = await previewMutation.mutateAsync(parsedRows);
+      setPreview(result);
+      if (!campaignId && campaigns[0]) setCampaignId(campaigns[0].id);
+      setStep('validate');
+    } catch {
+      toast.error('Erreur lors de la validation');
+    }
   };
 
   const handleImport = async () => {
+    if (!campaignId) {
+      toast.error('Sélectionnez une campagne');
+      return;
+    }
     setStep('progress');
     setProgressVal(0);
-    for (let i = 0; i <= 100; i += 5) {
-      await new Promise(r => setTimeout(r, 80));
-      setProgressVal(i);
+    const timer = setInterval(() => setProgressVal(v => Math.min(v + 8, 90)), 200);
+    try {
+      const result = await executeMutation.mutateAsync({
+        filename: fileName,
+        campaignId,
+        rows: parsedRows,
+      });
+      clearInterval(timer);
+      setProgressVal(100);
+      setImportResult(result);
+      setStep('success');
+      toast.success(`${result.imported} leads importés`);
+    } catch {
+      clearInterval(timer);
+      toast.error('Import échoué');
+      setStep('validate');
     }
-    setStep('success');
   };
 
   const reset = () => {
     setStep('upload');
     setFileName('');
-    setMappings({});
+    setParsedRows([]);
+    setPreview(null);
+    setCampaignId('');
+    setImportResult(null);
     setProgressVal(0);
   };
 
@@ -148,7 +206,7 @@ export function ImportPage() {
                 <input id="csv-input" type="file" accept=".csv" className="hidden" onChange={handleFileInput} />
               </div>
               <div className="mt-4 flex justify-end">
-                <Button variant="outline" size="sm" className="gap-2" onClick={() => toast.info('Téléchargement du modèle')}>
+                <Button variant="outline" size="sm" className="gap-2" onClick={() => downloadFile('/imports/template', 'modele-leads.csv')}>
                   <Download className="h-3.5 w-3.5" /> Télécharger le modèle CSV
                 </Button>
               </div>
@@ -162,48 +220,48 @@ export function ImportPage() {
                 <div className="flex items-center gap-2 mb-4">
                   <FileText className="h-4 w-4 text-primary" />
                   <span className="text-sm font-medium text-foreground">{fileName}</span>
-                  <span className="text-xs text-muted-foreground ml-auto">243 lignes détectées</span>
+                  <span className="text-xs text-muted-foreground ml-auto">{parsedRows.length} lignes détectées</span>
                 </div>
-                <h3 className="text-sm font-semibold text-foreground mb-4">Correspondance des colonnes</h3>
-                <div className="space-y-3">
-                  {CSV_COLUMNS.map((col, idx) => (
-                    <div key={col} className="flex items-center gap-4">
-                      <div className="flex-1 bg-muted rounded-lg px-3 py-2 text-xs font-mono text-foreground">{col}</div>
-                      <ChevronRight className="h-4 w-4 text-muted-foreground flex-shrink-0" />
-                      <select
-                        className="flex-1 bg-background border border-border rounded-lg px-3 py-2 text-xs text-foreground focus:outline-none focus:ring-1 focus:ring-primary"
-                        value={mappings[col] ?? SYSTEM_FIELDS[idx] ?? ''}
-                        onChange={e => setMappings(m => ({ ...m, [col]: e.target.value }))}
-                        data-testid={`select-mapping-${col}`}
-                      >
-                        <option value="">-- Ignorer --</option>
-                        {SYSTEM_FIELDS.map(f => <option key={f} value={f}>{f}</option>)}
-                      </select>
-                    </div>
+                <h3 className="text-sm font-semibold text-foreground mb-2">Colonnes détectées</h3>
+                <p className="text-xs text-muted-foreground mb-4">Mapping automatique : prénom, nom, téléphone, email, ville</p>
+                <div className="flex flex-wrap gap-2">
+                  {Object.keys(parsedRows[0] ?? {}).map(col => (
+                    <span key={col} className="text-xs font-mono bg-muted px-2 py-1 rounded-md">{col}</span>
                   ))}
                 </div>
               </div>
               <div className="flex justify-between">
                 <Button variant="outline" size="sm" onClick={reset}>Annuler</Button>
-                <Button size="sm" onClick={handleValidate} data-testid="button-validate">Valider le mapping</Button>
+                <Button size="sm" onClick={handleValidate} disabled={previewMutation.isPending} data-testid="button-validate">
+                  Valider le mapping
+                </Button>
               </div>
             </motion.div>
           )}
 
           {/* Step 3: Validate */}
-          {step === 'validate' && (
+          {step === 'validate' && preview && (
             <motion.div key="validate" initial={{ opacity: 0, x: 20 }} animate={{ opacity: 1, x: 0 }} exit={{ opacity: 0, x: -20 }} className="space-y-4">
+              <div className="bg-card border border-card-border rounded-xl p-4">
+                <Label className="text-sm mb-2 block">Campagne cible</Label>
+                <Select value={campaignId} onValueChange={setCampaignId}>
+                  <SelectTrigger><SelectValue placeholder="Choisir une campagne" /></SelectTrigger>
+                  <SelectContent>
+                    {campaigns.map(c => <SelectItem key={c.id} value={c.id}>{c.name}</SelectItem>)}
+                  </SelectContent>
+                </Select>
+              </div>
               <div className="grid grid-cols-3 gap-4">
                 <div className="bg-card border border-card-border rounded-xl p-4 text-center">
-                  <p className="text-2xl font-bold text-foreground">243</p>
+                  <p className="text-2xl font-bold text-foreground">{preview.totalRows}</p>
                   <p className="text-xs text-muted-foreground mt-1">Total lignes</p>
                 </div>
                 <div className="bg-emerald-50 dark:bg-emerald-950/20 border border-emerald-200 dark:border-emerald-800 rounded-xl p-4 text-center">
-                  <p className="text-2xl font-bold text-emerald-600">238</p>
+                  <p className="text-2xl font-bold text-emerald-600">{preview.valid}</p>
                   <p className="text-xs text-emerald-600/70 mt-1">Valides</p>
                 </div>
                 <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-xl p-4 text-center">
-                  <p className="text-2xl font-bold text-amber-600">5</p>
+                  <p className="text-2xl font-bold text-amber-600">{preview.warnings + preview.errors}</p>
                   <p className="text-xs text-amber-600/70 mt-1">Avertissements</p>
                 </div>
               </div>
@@ -215,20 +273,26 @@ export function ImportPage() {
                   <table className="w-full text-xs">
                     <thead>
                       <tr className="border-b border-border bg-muted/20">
-                        {Object.keys(SAMPLE_ROWS[0]).map(k => (
-                          <th key={k} className="px-4 py-2 text-left font-semibold text-muted-foreground">{k}</th>
-                        ))}
-                        <th className="px-4 py-2 text-left font-semibold text-muted-foreground">Statut</th>
+                        <th className="px-4 py-2 text-left">Prénom</th>
+                        <th className="px-4 py-2 text-left">Nom</th>
+                        <th className="px-4 py-2 text-left">Téléphone</th>
+                        <th className="px-4 py-2 text-left">Email</th>
+                        <th className="px-4 py-2 text-left">Ville</th>
+                        <th className="px-4 py-2 text-left">Statut</th>
                       </tr>
                     </thead>
                     <tbody>
-                      {SAMPLE_ROWS.map((row, idx) => (
-                        <tr key={idx} className="border-b border-border last:border-0">
-                          {Object.values(row).map((v, vi) => (
-                            <td key={vi} className="px-4 py-2 text-foreground">{v}</td>
-                          ))}
+                      {preview.preview.map((row) => (
+                        <tr key={row.index} className="border-b border-border last:border-0">
+                          <td className="px-4 py-2">{row.firstName}</td>
+                          <td className="px-4 py-2">{row.lastName}</td>
+                          <td className="px-4 py-2">{row.phone}</td>
+                          <td className="px-4 py-2">{row.email}</td>
+                          <td className="px-4 py-2">{row.city}</td>
                           <td className="px-4 py-2">
-                            <span className="bg-emerald-100 text-emerald-700 dark:bg-emerald-950/50 dark:text-emerald-300 px-2 py-0.5 rounded-full text-xs font-medium">Valide</span>
+                            <span className={cn('px-2 py-0.5 rounded-full text-xs font-medium', row.valid ? 'bg-emerald-100 text-emerald-700' : 'bg-amber-100 text-amber-700')}>
+                              {row.valid ? 'Valide' : 'Avert.'}
+                            </span>
                           </td>
                         </tr>
                       ))}
@@ -236,13 +300,19 @@ export function ImportPage() {
                   </table>
                 </div>
               </div>
-              <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-xl p-4 flex items-start gap-3">
-                <AlertCircle className="h-4 w-4 text-amber-500 flex-shrink-0 mt-0.5" />
-                <div>
-                  <p className="text-xs font-semibold text-amber-700 dark:text-amber-300">5 avertissements détectés</p>
-                  <p className="text-xs text-amber-600/80 dark:text-amber-400/80 mt-0.5">Numéros de téléphone potentiellement invalides sur les lignes 34, 67, 89, 145, 201. Ces lignes seront quand même importées.</p>
+              {(preview.warnings + preview.errors) > 0 && (
+                <div className="bg-amber-50 dark:bg-amber-950/20 border border-amber-200 dark:border-amber-800 rounded-xl p-4 flex items-start gap-3">
+                  <AlertCircle className="h-4 w-4 text-amber-500 flex-shrink-0 mt-0.5" />
+                  <div>
+                    <p className="text-xs font-semibold text-amber-700 dark:text-amber-300">
+                      {preview.warnings + preview.errors} avertissement(s) détecté(s)
+                    </p>
+                    <p className="text-xs text-amber-600/80 dark:text-amber-400/80 mt-0.5">
+                      Certaines lignes ont des données incomplètes ou invalides.
+                    </p>
+                  </div>
                 </div>
-              </div>
+              )}
               <div className="flex justify-between">
                 <Button variant="outline" size="sm" onClick={() => setStep('mapping')}>Retour</Button>
                 <Button size="sm" onClick={handleImport} data-testid="button-import">Lancer l'import</Button>
@@ -264,7 +334,7 @@ export function ImportPage() {
                   <span>{progressVal}%</span>
                 </div>
                 <Progress value={progressVal} className="h-2" />
-                <p className="text-xs text-muted-foreground">{Math.floor(progressVal * 2.43)} / 243 leads traités</p>
+                <p className="text-xs text-muted-foreground">{Math.floor((progressVal / 100) * parsedRows.length)} / {parsedRows.length} leads traités</p>
               </div>
             </motion.div>
           )}
@@ -288,15 +358,15 @@ export function ImportPage() {
               </div>
               <div className="grid grid-cols-3 gap-4 max-w-sm mx-auto">
                 <div className="bg-muted rounded-xl p-3 text-center">
-                  <p className="text-xl font-bold text-foreground">238</p>
+                  <p className="text-xl font-bold text-foreground">{importResult?.imported ?? 0}</p>
                   <p className="text-xs text-muted-foreground">Importés</p>
                 </div>
                 <div className="bg-muted rounded-xl p-3 text-center">
-                  <p className="text-xl font-bold text-amber-500">5</p>
+                  <p className="text-xl font-bold text-amber-500">{importResult?.skipped ?? 0}</p>
                   <p className="text-xs text-muted-foreground">Ignorés</p>
                 </div>
                 <div className="bg-muted rounded-xl p-3 text-center">
-                  <p className="text-xl font-bold text-emerald-500">0</p>
+                  <p className="text-xl font-bold text-emerald-500">{importResult?.errors ?? 0}</p>
                   <p className="text-xs text-muted-foreground">Erreurs</p>
                 </div>
               </div>
@@ -320,7 +390,7 @@ export function ImportPage() {
                 </tr>
               </thead>
               <tbody>
-                {IMPORT_HISTORY.map(row => (
+                {history.map(row => (
                   <tr key={row.id} className="border-b border-border last:border-0 hover:bg-muted/20" data-testid={`row-import-${row.id}`}>
                     <td className="px-4 py-3">
                       <div className="flex items-center gap-2">

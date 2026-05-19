@@ -1,9 +1,10 @@
-import { eq, inArray, sql, and } from "drizzle-orm";
+import { eq, inArray, sql, and, or, ilike, asc, desc, count } from "drizzle-orm";
 import { db } from "../../db/index.js";
 import { leads, leadNotes, campaigns, users } from "../../db/schema.js";
 import { NotFoundError, ForbiddenError } from "../../shared/errors.js";
 import { toLead } from "../../shared/mappers.js";
 import type { JwtPayload } from "../../middleware/auth.js";
+import type { ListLeadsQuery } from "./leads.schema.js";
 
 export class LeadsService {
   private async loadNotes(leadIds: string[]) {
@@ -27,26 +28,83 @@ export class LeadsService {
     return map;
   }
 
-  private scopeFilter(currentUser: JwtPayload) {
+  private buildWhere(currentUser: JwtPayload, query: ListLeadsQuery) {
+    const conditions = [];
+
     if (currentUser.role === "Agent") {
-      return eq(leads.assignedAgentId, currentUser.sub);
+      conditions.push(eq(leads.assignedAgentId, currentUser.sub));
+    } else if (query.assignedAgentId) {
+      conditions.push(eq(leads.assignedAgentId, query.assignedAgentId));
     }
-    return undefined;
+
+    if (query.search) {
+      const term = `%${query.search}%`;
+      conditions.push(
+        or(
+          ilike(leads.fullName, term),
+          ilike(leads.phone, term),
+          ilike(leads.email, term),
+        )!,
+      );
+    }
+    if (query.status) conditions.push(eq(leads.status, query.status));
+    if (query.campaignId) conditions.push(eq(leads.campaignId, query.campaignId));
+    if (query.priority) conditions.push(eq(leads.priority, query.priority));
+
+    return conditions.length ? and(...conditions) : undefined;
   }
 
-  async list(currentUser: JwtPayload) {
-    const scope = this.scopeFilter(currentUser);
-    const rows = await db
+  private orderBy(query: ListLeadsQuery) {
+    const dir = query.sortDir === "asc" ? asc : desc;
+    switch (query.sortBy) {
+      case "fullName":
+        return dir(leads.fullName);
+      case "city":
+        return dir(leads.city);
+      case "status":
+        return dir(leads.status);
+      case "priority":
+        return dir(leads.priority);
+      case "campaignName":
+        return dir(campaigns.name);
+      case "lastContact":
+      default:
+        return dir(leads.lastContact);
+    }
+  }
+
+  async list(currentUser: JwtPayload, query: ListLeadsQuery) {
+    const where = this.buildWhere(currentUser, query);
+    const offset = (query.page - 1) * query.limit;
+
+    const baseQuery = db
       .select({ lead: leads, campaignName: campaigns.name })
       .from(leads)
       .innerJoin(campaigns, eq(leads.campaignId, campaigns.id))
-      .where(scope ? and(scope) : undefined)
-      .orderBy(sql`${leads.createdAt} DESC`);
+      .where(where);
+
+    const [countRow] = await db
+      .select({ total: count() })
+      .from(leads)
+      .innerJoin(campaigns, eq(leads.campaignId, campaigns.id))
+      .where(where);
+
+    const rows = await baseQuery
+      .orderBy(this.orderBy(query))
+      .limit(query.limit)
+      .offset(offset);
 
     const notesMap = await this.loadNotes(rows.map((r) => r.lead.id));
-    return rows.map((r) =>
+    const items = rows.map((r) =>
       toLead(r.lead, r.campaignName, notesMap.get(r.lead.id) ?? []),
     );
+
+    return {
+      items,
+      total: countRow?.total ?? 0,
+      page: query.page,
+      limit: query.limit,
+    };
   }
 
   async getById(id: string, currentUser: JwtPayload) {
@@ -91,7 +149,7 @@ export class LeadsService {
       .update(leads)
       .set({ assignedAgentId: agentId, updatedAt: new Date() })
       .where(inArray(leads.id, leadIds));
-    return this.list(currentUser);
+    return { assigned: leadIds.length };
   }
 
   async addNote(leadId: string, content: string, currentUser: JwtPayload) {

@@ -27,7 +27,7 @@ export function useLeadActions() {
     bulkAssign.mutate(
       { leadIds, agentId },
       {
-        onSuccess: (data) => setLeads(data),
+        onSuccess: () => toast.success("Leads assignés"),
         onError: () => toast.error("Échec de l'assignation"),
       },
     );

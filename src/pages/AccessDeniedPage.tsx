@@ -64,7 +64,7 @@ export function AccessDeniedPage() {
           )}
           {user?.role === 'Agent' && (
             <ul className="text-xs text-muted-foreground space-y-0.5">
-              <li>Workspace Agent, Tâches, Notifications</li>
+              <li>Workspace Agent, Mes Leads, Tâches, Notifications</li>
             </ul>
           )}
           {user?.role === 'Admin' && (
