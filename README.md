@@ -104,7 +104,10 @@ cd "/Users/mouaad/Downloads/artifacts 2/crm-erp"
 
 # 1. Create a new empty repo on GitHub (e.g. crm-erp), then:
 git remote add origin https://github.com/YOUR_USERNAME/crm-erp.git
-git push -u origin main
+git checkout -b dev
+git push -u origin dev
 ```
 
-CI runs automatically via `.github/workflows/ci.yml` on push/PR to `main`.
+**Branches:** `dev` is the default development branch. Merge `dev` → `main` for production releases.
+
+CI runs on push to `dev` and on pull requests targeting `dev` or `main`.
