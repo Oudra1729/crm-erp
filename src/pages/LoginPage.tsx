@@ -69,7 +69,7 @@ export function LoginPage() {
       toast.success(`Connecté en tant que ${user.fullName}`);
       setLocation(ROLE_HOME[role]);
     } catch {
-      toast.error('Connexion impossible — vérifiez que le backend est démarré');
+      toast.error('Connexion impossible — vérifiez que le backend est démarré ');
     }
     setQuickLoading(null);
   };
